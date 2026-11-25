@@ -1,3 +1,1 @@
-# Tally
-
-A keyboard-friendly desk calculator with a printed history tape. Static single page (`index.html`), no build step.
+https://agent-6b069bd5231b8bc32d25bdbc--hello017.netlify.app/
