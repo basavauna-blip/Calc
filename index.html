@@ -1,12 +1,982 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tally — a desk calculator</title>
+  <meta name="description" content="A keyboard-friendly calculator with operator precedence, parentheses, percentages and a printed tape of past results." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232c2a25'/%3E%3Crect x='7' y='7' width='18' height='6' rx='1.5' fill='%23e7c48d'/%3E%3Ccircle cx='10' cy='19' r='2' fill='%23efe9dc'/%3E%3Ccircle cx='16' cy='19' r='2' fill='%23efe9dc'/%3E%3Ccircle cx='22' cy='19' r='2' fill='%23b8613f'/%3E%3Ccircle cx='10' cy='25' r='2' fill='%23efe9dc'/%3E%3Ccircle cx='16' cy='25' r='2' fill='%23efe9dc'/%3E%3Ccircle cx='22' cy='25' r='2' fill='%23b8613f'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --paper: #ebe4d6;
+      --paper-deep: #ddd4c2;
+      --ink: #2c2a25;
+      --ink-soft: #6d665a;
+      --body: #2f2d28;
+      --body-edge: #1f1e1a;
+      --key: #efe9dc;
+      --key-shadow: #c9c0ae;
+      --key-dark: #46433b;
+      --key-dark-shadow: #2a2823;
+      --accent: #b8613f;
+      --accent-shadow: #8a4429;
+      --screen: #1c1b18;
+      --screen-ink: #e7c48d;
+      --screen-dim: #8f7f61;
+      --tape: #f8f5ee;
+      --danger: #d9876a;
+      --mono: "DM Mono", ui-monospace, monospace;
+      --serif: "Fraunces", Georgia, serif;
+    }
 
-<html>
+    * { box-sizing: border-box; }
 
+    html, body { margin: 0; min-height: 100%; }
+
+    body {
+      font-family: var(--mono);
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 700px at 85% -10%, #f4efe5 0%, transparent 60%),
+        radial-gradient(900px 600px at -10% 110%, var(--paper-deep) 0%, transparent 60%),
+        var(--paper);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* fixed grain overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      opacity: .35;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .27 0 0 0 0 .22 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 1.1fr);
+      gap: clamp(24px, 4vw, 64px);
+      align-items: start;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: clamp(28px, 6vh, 72px) clamp(20px, 4vw, 48px) 48px;
+    }
+
+    /* ---------- Intro column ---------- */
+    .intro {
+      padding-top: 40px;
+      animation: rise .8s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .intro .eyebrow {
+      font-size: 11px;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .intro .eyebrow::before {
+      content: "";
+      width: 28px; height: 1px; background: currentColor;
+    }
+    .intro h1 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(56px, 7vw, 96px);
+      line-height: .9;
+      letter-spacing: -.03em;
+      margin: 18px 0 20px;
+    }
+    .intro h1 em { color: var(--accent); font-style: italic; }
+    .intro p {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--ink-soft);
+      max-width: 30ch;
+      margin: 0 0 28px;
+    }
+    .shortcuts {
+      list-style: none;
+      padding: 0; margin: 0;
+      font-size: 12px;
+      color: var(--ink-soft);
+      display: grid;
+      gap: 8px;
+    }
+    .shortcuts li { display: flex; gap: 10px; align-items: center; }
+    kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      min-width: 26px;
+      text-align: center;
+      padding: 3px 7px;
+      border-radius: 5px;
+      background: var(--tape);
+      border: 1px solid var(--key-shadow);
+      box-shadow: 0 2px 0 var(--key-shadow);
+      color: var(--ink);
+    }
+
+    /* ---------- Device ---------- */
+    .device {
+      width: min(372px, 100%);
+      background: linear-gradient(160deg, #3a3832 0%, var(--body) 40%, #26241f 100%);
+      border-radius: 30px;
+      padding: 26px 22px 24px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        inset 0 -2px 0 rgba(0,0,0,.35),
+        0 2px 0 var(--body-edge),
+        0 30px 60px -20px rgba(52, 40, 22, .45),
+        0 60px 90px -40px rgba(52, 40, 22, .35);
+      position: relative;
+      animation: rise .9s .1s cubic-bezier(.2,.8,.2,1) both;
+      margin-top: 8px;
+    }
+    .device-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 4px 14px;
+      color: #8e8778;
+      font-size: 10px;
+      letter-spacing: .24em;
+      text-transform: uppercase;
+    }
+    .device-top .brand { font-family: var(--serif); font-style: italic; letter-spacing: .02em; font-size: 15px; text-transform: none; color: #c9c0ae; }
+    .solar { display: flex; gap: 2px; }
+    .solar span { width: 12px; height: 14px; background: linear-gradient(180deg, #3d3426, #241f17); border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+
+    .screen {
+      background: var(--screen);
+      border-radius: 14px;
+      padding: 16px 18px 14px;
+      box-shadow:
+        inset 0 3px 8px rgba(0,0,0,.6),
+        inset 0 0 0 1px rgba(255,255,255,.03),
+        0 1px 0 rgba(255,255,255,.06);
+      min-height: 124px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      text-align: right;
+      overflow: hidden;
+      position: relative;
+    }
+    .screen::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 2px, transparent 2px 4px);
+      pointer-events: none;
+    }
+    .expr {
+      color: var(--screen-dim);
+      font-size: 14px;
+      min-height: 20px;
+      white-space: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      direction: rtl;
+      text-align: right;
+    }
+    .expr::-webkit-scrollbar { display: none; }
+    .expr span { direction: ltr; unicode-bidi: isolate; }
+    .expr .ghost { opacity: .45; }
+    .main {
+      color: var(--screen-ink);
+      font-weight: 300;
+      font-size: 46px;
+      line-height: 1.1;
+      margin-top: 6px;
+      white-space: nowrap;
+      letter-spacing: -.02em;
+      transition: font-size .15s ease;
+      font-variant-numeric: tabular-nums;
+    }
+    .main.s1 { font-size: 36px; }
+    .main.s2 { font-size: 28px; }
+    .main.s3 { font-size: 21px; }
+    .main.error { color: var(--danger); font-size: 20px; letter-spacing: 0; }
+    .main.flash { animation: flash .35s ease; }
+    .status {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--screen-dim);
+      margin-top: 8px;
+      opacity: .8;
+      min-height: 14px;
+    }
+    .status .on { color: var(--screen-ink); }
+
+    .strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 18px 0 12px;
+    }
+    .slim {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: .06em;
+      height: 32px;
+      border-radius: 9px;
+      border: 0;
+      color: #cfc6b4;
+      background: var(--key-dark);
+      box-shadow: 0 3px 0 var(--key-dark-shadow), inset 0 1px 0 rgba(255,255,255,.06);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: transform .06s ease, box-shadow .06s ease, background .15s;
+    }
+    .slim svg { width: 15px; height: 15px; }
+
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .key {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 400;
+      aspect-ratio: 1 / .92;
+      border: 0;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f6f1e6 0%, var(--key) 100%);
+      color: var(--ink);
+      box-shadow: 0 4px 0 var(--key-shadow), 0 6px 10px -4px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.7);
+      cursor: pointer;
+      transition: transform .06s ease, box-shadow .06s ease, filter .15s;
+      animation: keyIn .5s cubic-bezier(.2,.9,.3,1.2) both;
+      animation-delay: calc(.35s + var(--i, 0) * 22ms);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .key.op {
+      background: linear-gradient(180deg, #55524a 0%, var(--key-dark) 100%);
+      color: #f0d9b0;
+      box-shadow: 0 4px 0 var(--key-dark-shadow), 0 6px 10px -4px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .key.fn { font-size: 16px; letter-spacing: .04em; }
+    .key.eq {
+      background: linear-gradient(180deg, #c56d4a 0%, var(--accent) 100%);
+      color: #fbf1e3;
+      box-shadow: 0 4px 0 var(--accent-shadow), 0 6px 12px -4px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.2);
+    }
+    .key.ac { color: var(--accent); font-weight: 500; }
+    .key.active-op { outline: 2px solid #f0d9b0; outline-offset: -5px; }
+
+    .key:hover, .slim:hover { filter: brightness(1.04); }
+    .key:active, .key.pressed { transform: translateY(3px); box-shadow: 0 1px 0 var(--key-shadow), 0 2px 4px -2px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.5); }
+    .key.op:active, .key.op.pressed { box-shadow: 0 1px 0 var(--key-dark-shadow), inset 0 1px 0 rgba(255,255,255,.06); }
+    .key.eq:active, .key.eq.pressed { box-shadow: 0 1px 0 var(--accent-shadow), inset 0 1px 0 rgba(255,255,255,.15); }
+    .slim:active, .slim.pressed { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-dark-shadow); }
+    .key:focus-visible, .slim:focus-visible, .tape button:focus-visible, .entry:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .device-foot {
+      margin: 18px 6px 0;
+      display: flex; justify-content: space-between;
+      font-size: 9px; letter-spacing: .26em; text-transform: uppercase; color: #6f695d;
+    }
+
+    /* ---------- Tape ---------- */
+    .tape-wrap {
+      position: relative;
+      animation: rise .9s .25s cubic-bezier(.2,.8,.2,1) both;
+      transform-origin: top center;
+    }
+    .tape {
+      background: var(--tape);
+      width: min(330px, 100%);
+      margin-left: clamp(0px, 2vw, 28px);
+      transform: rotate(1.6deg);
+      padding: 28px 22px 36px;
+      box-shadow: 0 1px 1px rgba(0,0,0,.05), 0 18px 30px -18px rgba(70, 52, 25, .45);
+      position: relative;
+      --tooth: 10px;
+      -webkit-mask:
+        conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
+              mask:
+        conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
+      min-height: 360px;
+    }
+    .tape::before {
+      /* faint ruled lines */
+      content: "";
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(180deg, transparent 0 31px, rgba(120, 100, 70, .07) 31px 32px);
+      pointer-events: none;
+    }
+    .tape header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      border-bottom: 1px dashed #c8bfad;
+      padding-bottom: 12px; margin-bottom: 6px;
+      position: relative;
+    }
+    .tape h2 {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 20px;
+      margin: 0;
+      letter-spacing: -.01em;
+    }
+    .tape h2 small { font-family: var(--mono); font-weight: 400; font-size: 10px; letter-spacing: .18em; color: var(--ink-soft); margin-left: 8px; text-transform: uppercase; }
+    .tape button.clear {
+      font-family: var(--mono);
+      font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+      background: none; border: 0; color: var(--accent); cursor: pointer; padding: 4px 0;
+    }
+    .tape button.clear:disabled { color: #b8af9e; cursor: default; }
+    .tape button.clear:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    .entries { list-style: none; margin: 0; padding: 0; position: relative; max-height: 58vh; overflow-y: auto; scrollbar-width: thin; }
+    .entry {
+      display: block;
+      width: 100%;
+      text-align: right;
+      background: none;
+      border: 0;
+      border-bottom: 1px dotted #d6cdbb;
+      padding: 12px 2px 10px;
+      font-family: var(--mono);
+      color: var(--ink);
+      cursor: pointer;
+      animation: print .45s cubic-bezier(.2,.8,.2,1) both;
+      transition: background .15s;
+    }
+    .entry:hover { background: rgba(184, 97, 63, .06); }
+    .entry .q { display: block; font-size: 12px; color: var(--ink-soft); word-break: break-all; }
+    .entry .a { display: block; font-size: 19px; margin-top: 3px; word-break: break-all; }
+    .entry .a::before { content: "= "; color: var(--accent); }
+    .entry .hint { float: left; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); opacity: 0; transition: opacity .15s; margin-top: 6px; }
+    .entry:hover .hint, .entry:focus-visible .hint { opacity: 1; }
+
+    .empty {
+      text-align: center;
+      padding: 48px 8px 28px;
+      color: var(--ink-soft);
+      font-size: 12px;
+      line-height: 1.7;
+      position: relative;
+    }
+    .empty svg { width: 46px; height: 46px; display: block; margin: 0 auto 14px; color: #c8bfad; }
+    .empty strong { display: block; font-family: var(--serif); font-weight: 400; font-style: italic; font-size: 18px; color: var(--ink); margin-bottom: 4px; }
+
+    .total {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 2px solid var(--ink);
+      display: flex; justify-content: space-between;
+      font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft);
+      position: relative;
+    }
+    .total b { font-weight: 500; color: var(--ink); letter-spacing: 0; font-size: 14px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    /* ---------- Motion ---------- */
+    @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+    .tape-wrap { animation-name: riseTape; }
+    @keyframes riseTape { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: none; } }
+    @keyframes keyIn { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
+    @keyframes print { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+    @keyframes flash { 0% { opacity: .2; transform: translateY(4px); } 100% { opacity: 1; transform: none; } }
+    @keyframes shake { 0%,100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+    .screen.shake { animation: shake .35s ease; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 1020px) {
+      .layout { grid-template-columns: auto 1fr; }
+      .intro { grid-column: 1 / -1; padding-top: 0; display: grid; grid-template-columns: auto 1fr; gap: 0 40px; align-items: end; }
+      .intro h1 { margin-bottom: 0; }
+      .intro p { margin: 0; }
+      .shortcuts { display: none; }
+    }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; justify-items: center; padding-top: 28px; }
+      .intro { display: block; text-align: left; justify-self: stretch; }
+      .intro h1 { font-size: 56px; margin: 10px 0 10px; }
+      .device { width: 100%; max-width: 400px; }
+      .tape { margin-left: 0; width: 100%; max-width: 380px; transform: rotate(-.8deg); min-height: 0; }
+      .tape-wrap { width: 100%; display: flex; justify-content: center; }
+      .key { font-size: 20px; }
+    }
+  </style>
+</head>
 <body>
+  <main class="layout">
+    <section class="intro" aria-labelledby="title">
+      <div>
+        <div class="eyebrow">Desk calculator · No. 07</div>
+        <h1 id="title">Tally<em>.</em></h1>
+      </div>
+      <div>
+        <p>Type sums the way you'd write them. Multiplication before addition, brackets when you need them, and every answer prints to the tape.</p>
+        <ul class="shortcuts" aria-label="Keyboard shortcuts">
+          <li><kbd>0–9</kbd> digits &nbsp;<kbd>.</kbd> decimal</li>
+          <li><kbd>+</kbd><kbd>−</kbd><kbd>*</kbd><kbd>/</kbd> operators</li>
+          <li><kbd>(</kbd><kbd>)</kbd> brackets &nbsp;<kbd>%</kbd> percent</li>
+          <li><kbd>Enter</kbd> equals &nbsp;<kbd>⌫</kbd> undo a digit</li>
+          <li><kbd>Esc</kbd> clear everything</li>
+        </ul>
+      </div>
+    </section>
 
-<h1>My First Heading</h1>
+    <section class="device" aria-label="Calculator">
+      <div class="device-top">
+        <span class="brand">Tally</span>
+        <div class="solar" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      </div>
 
-<p>My first paragraph.</p>
+      <div class="screen" id="screen">
+        <div class="expr" id="expr" aria-hidden="true"></div>
+        <div class="main" id="main" role="status" aria-live="polite">0</div>
+        <div class="status" aria-hidden="true">
+          <span id="paren"></span>
+          <span id="mode">12 SIG</span>
+        </div>
+      </div>
 
+      <div class="strip">
+        <button class="slim" data-action="negate" aria-label="Toggle sign">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 5h4M5 3v4M9 12h4"/><path d="M12 3 4 13"/></svg>
+          sign
+        </button>
+        <button class="slim" data-action="ans" aria-label="Insert last answer">ans</button>
+        <button class="slim" data-action="back" data-key="Backspace" aria-label="Delete last character">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M5.5 3H14v10H5.5L1.5 8z"/><path d="m8 6 3 4M11 6l-3 4"/></svg>
+          del
+        </button>
+      </div>
+
+      <div class="keys" id="keys">
+        <button class="key fn ac" data-action="clear" data-key="Escape" aria-label="All clear">AC</button>
+        <button class="key op" data-action="paren" data-value="(" data-key="(">(</button>
+        <button class="key op" data-action="paren" data-value=")" data-key=")">)</button>
+        <button class="key op" data-action="op" data-value="÷" data-key="/" aria-label="Divide">÷</button>
+
+        <button class="key" data-action="digit" data-value="7" data-key="7">7</button>
+        <button class="key" data-action="digit" data-value="8" data-key="8">8</button>
+        <button class="key" data-action="digit" data-value="9" data-key="9">9</button>
+        <button class="key op" data-action="op" data-value="×" data-key="*" aria-label="Multiply">×</button>
+
+        <button class="key" data-action="digit" data-value="4" data-key="4">4</button>
+        <button class="key" data-action="digit" data-value="5" data-key="5">5</button>
+        <button class="key" data-action="digit" data-value="6" data-key="6">6</button>
+        <button class="key op" data-action="op" data-value="−" data-key="-" aria-label="Subtract">−</button>
+
+        <button class="key" data-action="digit" data-value="1" data-key="1">1</button>
+        <button class="key" data-action="digit" data-value="2" data-key="2">2</button>
+        <button class="key" data-action="digit" data-value="3" data-key="3">3</button>
+        <button class="key op" data-action="op" data-value="+" data-key="+" aria-label="Add">+</button>
+
+        <button class="key op" data-action="percent" data-key="%" aria-label="Percent">%</button>
+        <button class="key" data-action="digit" data-value="0" data-key="0">0</button>
+        <button class="key" data-action="dot" data-key="." aria-label="Decimal point">.</button>
+        <button class="key eq" data-action="equals" data-key="Enter" aria-label="Equals">=</button>
+      </div>
+
+      <div class="device-foot" aria-hidden="true"><span>Precision instrument</span><span>Mk II</span></div>
+    </section>
+
+    <aside class="tape-wrap" aria-label="Calculation history">
+      <div class="tape">
+        <header>
+          <h2>Tape <small id="count">0 lines</small></h2>
+          <button class="clear" id="clearTape" disabled>Tear off</button>
+        </header>
+        <ul class="entries" id="entries"></ul>
+        <div class="empty" id="empty">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M12 6h24v34l-4-3-4 3-4-3-4 3-4-3-4 3z" stroke-linejoin="round"/>
+            <path d="M18 15h12M18 21h12M22 27h8" stroke-linecap="round"/>
+          </svg>
+          <strong>Nothing printed yet</strong>
+          Press <kbd>=</kbd> and your answer lands here.<br/>Tap any line to reuse its result.
+        </div>
+        <div class="total" id="totalRow" hidden>
+          <span>Sum of tape</span><b id="total">0</b>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const OPS = ["+", "−", "×", "÷"];
+    const MAX_DIGITS = 15;
+
+    // State: a token list. Tokens: {t:"num", v:"12.5"} | {t:"op", v:"+"} | {t:"(" } | {t:")"} | {t:"%"}
+    let tokens = [];
+    let justEvaluated = false;
+    let lastAnswer = null;
+    let errorMsg = "";
+    const tape = [];
+
+    const $ = (id) => document.getElementById(id);
+    const exprEl = $("expr"), mainEl = $("main"), parenEl = $("paren"), screenEl = $("screen");
+    const entriesEl = $("entries"), emptyEl = $("empty"), countEl = $("count"), clearTapeBtn = $("clearTape");
+    const totalRow = $("totalRow"), totalEl = $("total");
+
+    // stagger key entrance
+    document.querySelectorAll(".key").forEach((k, i) => k.style.setProperty("--i", i));
+
+    // ---------- helpers ----------
+    const last = () => tokens[tokens.length - 1];
+    const isValueEnd = (tok) => tok && ((tok.t === "num" && tok.v !== "-") || tok.t === ")" || tok.t === "%");
+    const openParens = () => tokens.reduce((n, tk) => n + (tk.t === "(" ? 1 : tk.t === ")" ? -1 : 0), 0);
+    const digitCount = (s) => s.replace(/[^0-9]/g, "").length;
+
+    function numToToken(n) {
+      // Convert a JS number into a plain decimal string token (no exponent when feasible)
+      if (!isFinite(n)) return "0";
+      let s = String(n);
+      if (/e/i.test(s)) {
+        const abs = Math.abs(n);
+        s = abs < 1 ? n.toFixed(20).replace(/0+$/, "").replace(/\.$/, "") : n.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 0 });
+      }
+      return s;
+    }
+
+    function startFreshIfNeeded(keepAnswer) {
+      if (!justEvaluated) return;
+      justEvaluated = false;
+      tokens = keepAnswer && lastAnswer !== null ? [{ t: "num", v: numToToken(lastAnswer) }] : [];
+    }
+
+    function clearError() { errorMsg = ""; }
+
+    // ---------- input actions ----------
+    function inputDigit(d) {
+      clearError();
+      startFreshIfNeeded(false);
+      const tk = last();
+      if (tk && tk.t === "num") {
+        if (digitCount(tk.v) >= MAX_DIGITS) return nudge();
+        if (tk.v === "0") tk.v = d;
+        else if (tk.v === "-0") tk.v = "-" + d;
+        else tk.v += d;
+      } else {
+        if (isValueEnd(tk)) tokens.push({ t: "op", v: "×" });
+        tokens.push({ t: "num", v: d });
+      }
+    }
+
+    function inputDot() {
+      clearError();
+      startFreshIfNeeded(false);
+      const tk = last();
+      if (tk && tk.t === "num") {
+        if (tk.v.includes(".")) return nudge();
+        tk.v += tk.v === "-" ? "0." : ".";
+      } else {
+        if (isValueEnd(tk)) tokens.push({ t: "op", v: "×" });
+        tokens.push({ t: "num", v: "0." });
+      }
+    }
+
+    function inputOp(op) {
+      clearError();
+      startFreshIfNeeded(true);
+      const tk = last();
+      if (!tk || tk.t === "(") {
+        // allow starting a negative number
+        if (op === "−") tokens.push({ t: "num", v: "-" });
+        else if (!tk && lastAnswer !== null) { tokens.push({ t: "num", v: numToToken(lastAnswer) }, { t: "op", v: op }); }
+        return;
+      }
+      if (tk.t === "num" && tk.v === "-") {
+        // lone minus: replace with op only if there's something before it to operate on
+        tokens.pop();
+        if (isValueEnd(last())) tokens.push({ t: "op", v: op });
+        return;
+      }
+      if (tk.t === "op") {
+        if (op === "−" && (tk.v === "×" || tk.v === "÷")) { tokens.push({ t: "num", v: "-" }); return; }
+        tk.v = op;
+        return;
+      }
+      if (tk.t === "num" && tk.v.endsWith(".")) tk.v = tk.v.slice(0, -1);
+      tokens.push({ t: "op", v: op });
+    }
+
+    function inputParen(p) {
+      clearError();
+      if (p === "(") {
+        startFreshIfNeeded(false);
+        const tk = last();
+        if (tk && tk.t === "num" && tk.v === "-") { tk.v = "-1"; tokens.push({ t: "op", v: "×" }); }
+        else if (isValueEnd(tk)) tokens.push({ t: "op", v: "×" });
+        tokens.push({ t: "(" });
+      } else {
+        if (justEvaluated) return nudge();
+        if (openParens() <= 0 || !isValueEnd(last())) return nudge();
+        tokens.push({ t: ")" });
+      }
+    }
+
+    function inputPercent() {
+      clearError();
+      startFreshIfNeeded(true);
+      if (!isValueEnd(last())) return nudge();
+      tokens.push({ t: "%" });
+    }
+
+    function negate() {
+      clearError();
+      if (justEvaluated) startFreshIfNeeded(true);
+      const tk = last();
+      if (!tk || tk.t === "op" || tk.t === "(") { tokens.push({ t: "num", v: "-" }); return; }
+      if (tk.t === "num") {
+        tk.v = tk.v.startsWith("-") ? tk.v.slice(1) : "-" + tk.v;
+        if (tk.v === "") tokens.pop();
+        return;
+      }
+      nudge();
+    }
+
+    function insertAnswer() {
+      clearError();
+      if (lastAnswer === null) return nudge();
+      if (justEvaluated) { justEvaluated = false; tokens = []; }
+      const tk = last();
+      if (tk && tk.t === "num" && tk.v === "-") { tk.v = numToToken(-lastAnswer); return; }
+      if (tk && tk.t === "num") return nudge();
+      if (isValueEnd(tk)) tokens.push({ t: "op", v: "×" });
+      tokens.push({ t: "num", v: numToToken(lastAnswer) });
+    }
+
+    function backspace() {
+      if (errorMsg) { clearError(); return; }
+      if (justEvaluated) { justEvaluated = false; tokens = []; return; }
+      const tk = last();
+      if (!tk) return;
+      if (tk.t === "num" && tk.v.length > 1 && tk.v !== "-0") {
+        tk.v = tk.v.slice(0, -1);
+        if (tk.v === "-") { /* keep lone minus */ }
+      } else tokens.pop();
+    }
+
+    function clearAll() {
+      tokens = [];
+      justEvaluated = false;
+      clearError();
+    }
+
+    function equals() {
+      if (justEvaluated || !tokens.length) return;
+      const prepared = prepare(tokens);
+      if (!prepared.length) return;
+      const res = evaluate(prepared);
+      if (res.error) {
+        errorMsg = res.error;
+        shake();
+        return;
+      }
+      const exprText = formatExpr(prepared);
+      lastAnswer = res.value;
+      addToTape(exprText, res.value);
+      tokens = [{ t: "num", v: numToToken(res.value) }];
+      justEvaluated = true;
+      mainEl.classList.remove("flash"); void mainEl.offsetWidth; mainEl.classList.add("flash");
+    }
+
+    // ---------- evaluation ----------
+    // Trim trailing junk and auto-close brackets so partial input can be previewed/evaluated.
+    function prepare(src) {
+      const out = src.map((tk) => ({ ...tk }));
+      while (out.length) {
+        const tk = out[out.length - 1];
+        if (tk.t === "op" || tk.t === "(" || (tk.t === "num" && tk.v === "-")) out.pop();
+        else break;
+      }
+      const tk = out[out.length - 1];
+      if (tk && tk.t === "num" && tk.v.endsWith(".")) tk.v = tk.v.slice(0, -1) || "0";
+      let open = out.reduce((n, t) => n + (t.t === "(" ? 1 : t.t === ")" ? -1 : 0), 0);
+      while (open-- > 0) out.push({ t: ")" });
+      // remove empty () pairs left after trimming
+      for (let i = out.length - 2; i >= 0; i--) {
+        if (out[i].t === "(" && out[i + 1] && out[i + 1].t === ")") { out.splice(i, 2); i = Math.min(i, out.length - 1); }
+      }
+      return out;
+    }
+
+    // Recursive-descent evaluator: expr := term (("+"|"−") term)* ; term := factor (("×"|"÷") factor)* ; factor := primary "%"*
+    function evaluate(list) {
+      let i = 0;
+      const fail = (msg) => { throw new Error(msg); };
+      const peek = () => list[i];
+
+      function primary() {
+        const tk = list[i++];
+        if (!tk) fail("Incomplete expression");
+        if (tk.t === "num") {
+          const n = parseFloat(tk.v);
+          if (isNaN(n)) fail("Incomplete expression");
+          return n;
+        }
+        if (tk.t === "(") {
+          const v = expr();
+          if (!peek() || peek().t !== ")") fail("Missing bracket");
+          i++;
+          return v;
+        }
+        fail("Unexpected symbol");
+      }
+      function factor() {
+        let v = primary();
+        while (peek() && peek().t === "%") { i++; v = v / 100; }
+        return v;
+      }
+      function term() {
+        let v = factor();
+        while (peek() && peek().t === "op" && (peek().v === "×" || peek().v === "÷")) {
+          const op = list[i++].v;
+          const r = factor();
+          if (op === "×") v = v * r;
+          else {
+            if (r === 0) fail("Can't divide by zero");
+            v = v / r;
+          }
+        }
+        return v;
+      }
+      function expr() {
+        let v = term();
+        while (peek() && peek().t === "op" && (peek().v === "+" || peek().v === "−")) {
+          const op = list[i++].v;
+          const r = term();
+          v = op === "+" ? v + r : v - r;
+        }
+        return v;
+      }
+
+      try {
+        const v = expr();
+        if (i < list.length) fail("Unexpected symbol");
+        if (!isFinite(v)) fail("Number too large");
+        const clean = parseFloat(v.toPrecision(12));
+        return { value: Object.is(clean, -0) ? 0 : clean };
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    // ---------- formatting ----------
+    function groupInt(intPart) {
+      return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    function formatNumToken(v) {
+      const neg = v.startsWith("-");
+      const body = neg ? v.slice(1) : v;
+      const [int, frac] = body.split(".");
+      return (neg ? "−" : "") + groupInt(int || (body ? "0" : "")) + (frac !== undefined ? "." + frac : "");
+    }
+    function formatNumber(n) {
+      const abs = Math.abs(n);
+      if (abs !== 0 && (abs >= 1e15 || abs < 1e-9)) {
+        return n.toExponential(8).replace(/\.?0+e/, "e").replace("e+", "e").replace("-", "−");
+      }
+      return n.toLocaleString("en-US", { maximumFractionDigits: 10 }).replace("-", "−");
+    }
+    function formatExpr(list) {
+      return list.map((tk) => {
+        if (tk.t === "num") return formatNumToken(tk.v);
+        if (tk.t === "op") return ` ${tk.v} `;
+        if (tk.t === "%") return "%";
+        return tk.t;
+      }).join("").replace(/\s+/g, " ").trim();
+    }
+
+    // ---------- rendering ----------
+    function sizeClass(text) {
+      const len = text.length;
+      return len > 16 ? "s3" : len > 12 ? "s2" : len > 9 ? "s1" : "";
+    }
+
+    function render() {
+      document.querySelectorAll(".key.active-op").forEach((k) => k.classList.remove("active-op"));
+      const open = openParens();
+      parenEl.innerHTML = open > 0 && !justEvaluated ? `<span class="on">( ×${open}</span> open` : "";
+
+      if (errorMsg) {
+        mainEl.className = "main error";
+        mainEl.textContent = errorMsg;
+        exprEl.innerHTML = `<span>${escapeHtml(formatExpr(tokens))}</span>`;
+        return;
+      }
+
+      if (justEvaluated) {
+        const latest = tape[0];
+        exprEl.innerHTML = latest ? `<span>${escapeHtml(latest.q)} =</span>` : "";
+        const text = formatNumber(lastAnswer);
+        mainEl.className = "main " + sizeClass(text);
+        mainEl.textContent = text;
+        return;
+      }
+
+      if (!tokens.length) {
+        exprEl.innerHTML = "";
+        mainEl.className = "main";
+        mainEl.textContent = "0";
+        return;
+      }
+
+      // Top line: the full expression typed so far (with ghost closing brackets)
+      const ghosts = ")".repeat(Math.max(open, 0));
+      exprEl.innerHTML = `<span>${escapeHtml(formatExpr(tokens))}<span class="ghost">${ghosts}</span></span>`;
+
+      // Main line: live preview of the result
+      const prepared = prepare(tokens);
+      const res = prepared.length ? evaluate(prepared) : { value: 0 };
+      let text;
+      if (res.error) {
+        const tk = last();
+        text = tk && tk.t === "num" ? formatNumToken(tk.v) : "…";
+      } else {
+        text = formatNumber(res.value);
+      }
+      mainEl.className = "main " + sizeClass(text);
+      mainEl.textContent = text;
+
+      const tk = last();
+      if (tk && tk.t === "op") {
+        const key = document.querySelector(`.key[data-action="op"][data-value="${tk.v}"]`);
+        if (key) key.classList.add("active-op");
+      }
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function nudge() {
+      screenEl.classList.remove("shake"); void screenEl.offsetWidth; screenEl.classList.add("shake");
+    }
+    const shake = nudge;
+
+    // ---------- tape ----------
+    function addToTape(q, value) {
+      tape.unshift({ q, value });
+      if (tape.length > 100) tape.pop();
+      renderTape(true);
+    }
+
+    function renderTape(animateFirst) {
+      entriesEl.innerHTML = "";
+      tape.forEach((row, idx) => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.className = "entry";
+        btn.type = "button";
+        btn.setAttribute("aria-label", `${row.q} equals ${formatNumber(row.value)}. Use this result.`);
+        btn.innerHTML = `<span class="hint">use</span><span class="q"></span><span class="a"></span>`;
+        btn.querySelector(".q").textContent = row.q;
+        btn.querySelector(".a").textContent = formatNumber(row.value);
+        if (!(animateFirst && idx === 0)) btn.style.animation = "none";
+        btn.addEventListener("click", () => useResult(row.value));
+        li.appendChild(btn);
+        entriesEl.appendChild(li);
+      });
+      const n = tape.length;
+      emptyEl.hidden = n > 0;
+      totalRow.hidden = n < 2;
+      clearTapeBtn.disabled = n === 0;
+      countEl.textContent = `${n} ${n === 1 ? "line" : "lines"}`;
+      if (n > 1) {
+        const sum = parseFloat(tape.reduce((s, r) => s + r.value, 0).toPrecision(12));
+        totalEl.textContent = formatNumber(sum);
+      }
+    }
+
+    function useResult(value) {
+      clearError();
+      if (justEvaluated || !tokens.length) {
+        tokens = [{ t: "num", v: numToToken(value) }];
+        justEvaluated = false;
+      } else {
+        const tk = last();
+        if (tk.t === "num" && tk.v !== "-") tk.v = numToToken(value);
+        else if (tk.t === "num" && tk.v === "-") tk.v = numToToken(-value);
+        else {
+          if (isValueEnd(tk)) tokens.push({ t: "op", v: "×" });
+          tokens.push({ t: "num", v: numToToken(value) });
+        }
+      }
+      render();
+    }
+
+    clearTapeBtn.addEventListener("click", () => {
+      tape.length = 0;
+      renderTape(false);
+    });
+
+    // ---------- wiring ----------
+    function dispatch(action, value) {
+      switch (action) {
+        case "digit": inputDigit(value); break;
+        case "dot": inputDot(); break;
+        case "op": inputOp(value); break;
+        case "paren": inputParen(value); break;
+        case "percent": inputPercent(); break;
+        case "negate": negate(); break;
+        case "ans": insertAnswer(); break;
+        case "back": backspace(); break;
+        case "clear": clearAll(); break;
+        case "equals": equals(); break;
+      }
+      render();
+    }
+
+    document.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => dispatch(btn.dataset.action, btn.dataset.value));
+      // Mouse/touch presses shouldn't steal focus, so a later Enter keypress means "=" rather than re-clicking this key.
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
+    });
+
+    const keyMap = {
+      "x": "*", "X": "*", "=": "Enter", "Delete": "Escape", ",": ".",
+    };
+
+    document.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      let k = keyMap[e.key] || e.key;
+      if (k === "Enter" && document.activeElement && document.activeElement.matches(".entry, .clear")) return;
+      if (k === "Enter" && document.activeElement && document.activeElement.matches(".key, .slim")) {
+        // Let the focused button handle Enter as a click; avoid double input.
+        return;
+      }
+      const btn = document.querySelector(`[data-key="${CSS.escape(k)}"]`);
+      if (!btn) return;
+      e.preventDefault();
+      btn.classList.add("pressed");
+      setTimeout(() => btn.classList.remove("pressed"), 110);
+      dispatch(btn.dataset.action, btn.dataset.value);
+    });
+
+    renderTape(false);
+    render();
+  })();
+  </script>
 </body>
 </html>
